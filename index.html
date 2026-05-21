@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kaleidoscope Particle Art</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #fff;
+            font-family: 'sans-serif';
+        }
+        canvas {
+            display: block;
+        }
+        .ui-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 25px;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            user-select: none;
+            transition: opacity 0.3s;
+        }
+        .ui-overlay:hover {
+            opacity: 1;
+        }
+        .instruction {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="instruction">
+        <h1 class="text-xl font-bold">Kaleidoscope Art</h1>
+        <p class="text-sm">画面をドラッグまたはタッチしてください</p>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="ui-overlay" id="ui">
+        <div class="flex flex-col items-center">
+            <label class="text-xs mb-1">分割数</label>
+            <input type="range" id="sides" min="3" max="24" value="12" class="w-24">
+        </div>
+        <button id="clearBtn" class="bg-white text-black px-4 py-1 rounded-full text-sm font-bold hover:bg-gray-200 transition">クリア</button>
+        <button id="autoBtn" class="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-bold hover:bg-blue-400 transition">自動実行: OFF</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const sidesInput = document.getElementById('sides');
+        const clearBtn = document.getElementById('clearBtn');
+        const autoBtn = document.getElementById('autoBtn');
+
+        let width, height;
+        let particles = [];
+        let mouseX = 0, mouseY = 0;
+        let isDrawing = false;
+        let autoMode = false;
+        let hue = 0;
+
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            
+            // Mouse events
+            canvas.addEventListener('mousedown', () => isDrawing = true);
+            window.addEventListener('mouseup', () => isDrawing = false);
+            canvas.addEventListener('mousemove', handleMove);
+
+            // Touch events
+            canvas.addEventListener('touchstart', (e) => {
+                isDrawing = true;
+                handleMove(e.touches[0]);
+                e.preventDefault();
+            }, { passive: false });
+            canvas.addEventListener('touchend', () => isDrawing = false);
+            canvas.addEventListener('touchmove', (e) => {
+                handleMove(e.touches[0]);
+                e.preventDefault();
+            }, { passive: false });
+
+            clearBtn.addEventListener('click', () => {
+                particles = [];
+                ctx.clearRect(0, 0, width, height);
+            });
+
+            autoBtn.addEventListener('click', () => {
+                autoMode = !autoMode;
+                autoBtn.innerText = `自動実行: ${autoMode ? 'ON' : 'OFF'}`;
+                autoBtn.classList.toggle('bg-blue-500');
+                autoBtn.classList.toggle('bg-green-500');
+            });
+
+            loop();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function handleMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (isDrawing) {
+                createParticles(mouseX, mouseY);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue, speedX, speedY) {
+                this.x = x;
+                this.y = y;
+                this.hue = hue;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = speedX || (Math.random() - 0.5) * 2;
+                this.speedY = speedY || (Math.random() - 0.5) * 2;
+                this.life = 1.0;
+                this.decay = Math.random() * 0.02 + 0.005;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+            }
+
+            draw(context, centerX, centerY, sides) {
+                if (this.life <= 0) return;
+
+                const relX = this.x - centerX;
+                const relY = this.y - centerY;
+                const angle = Math.atan2(relY, relX);
+                const dist = Math.sqrt(relX * relX + relY * relY);
+
+                context.save();
+                context.translate(centerX, centerY);
+                
+                const step = (Math.PI * 2) / sides;
+                for (let i = 0; i < sides; i++) {
+                    context.rotate(step);
+                    
+                    // Main point
+                    this.drawPoint(context, dist, angle);
+                    
+                    // Mirrored point
+                    context.save();
+                    context.scale(1, -1);
+                    this.drawPoint(context, dist, -angle);
+                    context.restore();
+                }
+                context.restore();
+            }
+
+            drawPoint(context, dist, angle) {
+                const px = Math.cos(angle) * dist;
+                const py = Math.sin(angle) * dist;
+                
+                context.beginPath();
+                context.arc(px, py, this.size * this.life, 0, Math.PI * 2);
+                context.fillStyle = `hsla(${this.hue}, 80%, 60%, ${this.life})`;
+                context.fill();
+                
+                // Glow effect
+                if (this.life > 0.5) {
+                    context.shadowBlur = 10;
+                    context.shadowColor = `hsla(${this.hue}, 80%, 60%, ${this.life})`;
+                }
+            }
+        }
+
+        function createParticles(x, y) {
+            const count = 2;
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+            hue = (hue + 1) % 360;
+        }
+
+        function loop() {
+            // Fading background for trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (autoMode) {
+                const t = Date.now() * 0.001;
+                const cx = width / 2 + Math.cos(t) * (width * 0.3);
+                const cy = height / 2 + Math.sin(t * 0.7) * (height * 0.3);
+                createParticles(cx, cy);
+            }
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const sides = parseInt(sidesInput.value);
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw(ctx, centerX, centerY, sides);
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
